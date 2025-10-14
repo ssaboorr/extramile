@@ -52,7 +52,8 @@ export default function JoinRoomModal({ open, onClose }: JoinRoomModalProps) {
 
     try {
       await joinRoom(roomCode.toUpperCase());
-      router.push(`/room/${roomCode.toUpperCase()}`);
+      router.push(`/game/${roomCode.toUpperCase()}`);
+      onClose();
     } catch (err: any) {
       setError(err.message || 'Failed to join room');
     } finally {

@@ -58,7 +58,6 @@ export default function HomePage() {
     return null; // Show nothing while redirecting
   }
 
-  console.log(user);
   // return <div> {user.displayName || user.email|| '?'}</div>;
 
   return (

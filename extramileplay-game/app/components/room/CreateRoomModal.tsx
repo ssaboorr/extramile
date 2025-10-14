@@ -67,7 +67,8 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
 
   const handleEnterRoom = () => {
     if (roomCode) {
-      router.push(`/admin/${roomCode}`);
+      router.push(`/game/${roomCode}`);
+      onClose();
     }
   };
 

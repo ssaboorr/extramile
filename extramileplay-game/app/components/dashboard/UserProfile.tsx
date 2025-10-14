@@ -88,7 +88,7 @@ export default function UserProfile({ user }: UserProfileProps) {
       <Box
         sx={{
           backgroundColor: 'rgba(255, 255, 255, 0.05)',
-          borderRadius: Number(theme.shape.borderRadius) * 1.5,
+          // borderRadius: Number(theme.shape.borderRadius) * 1.5,
           p: 3,
           display: 'flex',
           flexDirection: 'column',
