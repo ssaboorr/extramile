@@ -1,10 +1,13 @@
 'use client';
 
-import { Typography, Avatar, Box, Chip, useTheme } from '@mui/material';
+import { Typography, Avatar, Box, Chip, useTheme, Skeleton } from '@mui/material';
 import { User } from 'firebase/auth';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import PersonIcon from '@mui/icons-material/Person';
+import StarIcon from '@mui/icons-material/Star';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import GlassCard from '@/components/shared/GlassCard';
+import { usePlayer } from '@/lib/hooks/usePlayer';
 
 interface UserProfileProps {
   user: User;
@@ -13,6 +16,7 @@ interface UserProfileProps {
 export default function UserProfile({ user }: UserProfileProps) {
   const theme = useTheme();
   const isAnonymous = user.isAnonymous;
+  const { playerData, loading, error } = usePlayer(user);
 
   return (
     <GlassCard hover={false}>
@@ -91,48 +95,135 @@ export default function UserProfile({ user }: UserProfileProps) {
           gap: 2,
         }}
       >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography 
-            variant="body2" 
-            sx={{
-              color: 'rgba(255, 255, 255, 0.7)',
-              fontSize: { xs: '0.8rem', sm: '0.9rem' },
-            }}
-          >
-            Games Played
-          </Typography>
-          <Typography 
-            variant="body2" 
-            sx={{
-              color: 'white',
-              fontWeight: 600,
-              fontSize: { xs: '0.8rem', sm: '0.9rem' },
-            }}
-          >
-            0
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography 
-            variant="body2" 
-            sx={{
-              color: 'rgba(255, 255, 255, 0.7)',
-              fontSize: { xs: '0.8rem', sm: '0.9rem' },
-            }}
-          >
-            Best Score
-          </Typography>
-          <Typography 
-            variant="body2" 
-            sx={{
-              color: 'white',
-              fontWeight: 600,
-              fontSize: { xs: '0.8rem', sm: '0.9rem' },
-            }}
-          >
-            --
-          </Typography>
-        </Box>
+        {loading ? (
+          // Loading skeletons
+          <>
+            {[...Array(4)].map((_, index) => (
+              <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Skeleton variant="text" width="60%" height={20} sx={{ bgcolor: 'rgba(255, 255, 255, 0.1)' }} />
+                <Skeleton variant="text" width="30%" height={20} sx={{ bgcolor: 'rgba(255, 255, 255, 0.1)' }} />
+              </Box>
+            ))}
+          </>
+        ) : (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                Level
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <StarIcon sx={{ fontSize: 16, color: '#fbbf24' }} />
+                <Typography 
+                  variant="body2" 
+                  sx={{
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                  }}
+                >
+                  {playerData?.level || 1}
+                </Typography>
+              </Box>
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                Games Played
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'white',
+                  fontWeight: 600,
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                {playerData?.totalGamesPlayed || 0}
+              </Typography>
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                Best Score
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <EmojiEventsIcon sx={{ fontSize: 16, color: '#fbbf24' }} />
+                <Typography 
+                  variant="body2" 
+                  sx={{
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                  }}
+                >
+                  {playerData?.bestScore || 0}
+                </Typography>
+              </Box>
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                Win Rate
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'white',
+                  fontWeight: 600,
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                {playerData ? `${playerData.winRate.toFixed(1)}%` : '0%'}
+              </Typography>
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                Current Streak
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{
+                  color: 'white',
+                  fontWeight: 600,
+                  fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                }}
+              >
+                {playerData?.currentStreak || 0}
+              </Typography>
+            </Box>
+          </>
+        )}
       </Box>
     </GlassCard>
   );

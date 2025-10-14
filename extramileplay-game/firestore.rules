@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isValidPlayer() {
+      return request.auth != null && 
+             request.auth.uid != null &&
+             request.auth.uid != "";
+    }
+    
+    // Players collection - users can read/write their own data
+    match /players/{userId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // Allow creating new player records during sign-up
+      allow create: if isAuthenticated() && 
+                       request.auth.uid == userId &&
+                       request.resource.data.uid == userId &&
+                       request.resource.data.createdAt != null &&
+                       request.resource.data.lastLoginAt != null;
+    }
+    
+    // Rooms collection
+    match /rooms/{roomId} {
+      // Authenticated users can read room data
+      allow read: if isAuthenticated();
+      
+      // Users can create rooms
+      allow create: if isAuthenticated() && 
+                       request.resource.data.hostId == request.auth.uid &&
+                       request.resource.data.roomId == roomId;
+      
+      // Host can update room settings and status
+      allow update: if isAuthenticated() && 
+                       (resource.data.hostId == request.auth.uid || 
+                        request.resource.data.hostId == request.auth.uid);
+      
+      // Room players subcollection
+      match /players/{playerId} {
+        // Players can read all room participants
+        allow read: if isAuthenticated();
+        
+        // Players can join rooms (create their own entry)
+        allow create: if isAuthenticated() && 
+                         playerId == request.auth.uid &&
+                         request.resource.data.playerId == request.auth.uid;
+        
+        // Players can update their own data in the room
+        allow update: if isAuthenticated() && playerId == request.auth.uid;
+        
+        // Players can delete their own entry when leaving
+        allow delete: if isAuthenticated() && playerId == request.auth.uid;
+      }
+    }
+    
+    // Games collection
+    match /games/{gameId} {
+      // Authenticated users can read game data
+      allow read: if isAuthenticated();
+      
+      // Players can create their own game records
+      allow create: if isAuthenticated() && 
+                       request.resource.data.playerId == request.auth.uid;
+      
+      // Players can update their own game records
+      allow update: if isAuthenticated() && 
+                       (resource.data.playerId == request.auth.uid ||
+                        request.resource.data.playerId == request.auth.uid);
+    }
+    
+    // Achievements collection - read-only for users
+    match /achievements/{achievementId} {
+      allow read: if isAuthenticated();
+      // Only admins can write achievements (you can implement admin check later)
+      allow write: if false;
+    }
+    
+    // Leaderboards collection (if you create one)
+    match /leaderboards/{leaderboardId} {
+      allow read: if isAuthenticated();
+      // System can write leaderboards (implement with Cloud Functions later)
+      allow write: if false;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
