@@ -1,80 +1,139 @@
 'use client';
 
-import { Card, CardContent, Typography, Avatar, Box, Chip } from '@mui/material';
+import { Typography, Avatar, Box, Chip, useTheme } from '@mui/material';
 import { User } from 'firebase/auth';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import PersonIcon from '@mui/icons-material/Person';
+import GlassCard from '@/components/shared/GlassCard';
 
 interface UserProfileProps {
   user: User;
 }
 
 export default function UserProfile({ user }: UserProfileProps) {
+  const theme = useTheme();
   const isAnonymous = user.isAnonymous;
 
   return (
-    <Card
-      elevation={0}
-      sx={{
-        borderRadius: 3,
-        border: '1px solid',
-        borderColor: 'rgba(0,0,0,0.06)',
-        height: '100%',
-      }}
-    >
-      <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
-        <Typography variant="h6" className="font-bold text-gray-800 mb-4">
-          Profile
+    <GlassCard hover={false}>
+      <Typography 
+        variant="h6" 
+        sx={{
+          color: 'white',
+          fontWeight: 700,
+          mb: 3,
+          fontSize: { xs: '1.1rem', sm: '1.25rem' },
+        }}
+      >
+        Profile
+      </Typography>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', mb: 3 }}>
+        <Avatar
+          src={user.photoURL || undefined}
+          alt={user.displayName || 'User'}
+          sx={{ 
+            width: 80, 
+            height: 80, 
+            mb: 2,
+            border: '4px solid rgba(255, 255, 255, 0.3)',
+          }}
+        >
+          {user.displayName?.[0] || <PersonIcon sx={{ fontSize: 40 }} />}
+        </Avatar>
+
+        <Typography 
+          variant="h6" 
+          sx={{
+            color: 'white',
+            fontWeight: 700, 
+            mb: 1,
+            fontSize: { xs: '1rem', sm: '1.1rem' },
+          }}
+        >
+          {user.displayName || 'Guest Player'}
         </Typography>
 
-        <Box className="flex flex-col items-center text-center mb-4">
-          <Avatar
-            src={user.photoURL || undefined}
-            alt={user.displayName || 'User'}
-            sx={{ width: 80, height: 80, mb: 2 }}
-            className="border-4 border-indigo-100"
+        {user.email && (
+          <Typography 
+            variant="body2" 
+            sx={{
+              color: 'rgba(255, 255, 255, 0.7)',
+              mb: 2,
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+            }}
           >
-            {user.displayName?.[0] || <PersonIcon sx={{ fontSize: 40 }} />}
-          </Avatar>
-
-          <Typography variant="h6" className="font-bold text-gray-800 mb-1">
-            {user.displayName || 'Guest Player'}
+            {user.email}
           </Typography>
+        )}
 
-          {user.email && (
-            <Typography variant="body2" className="text-gray-500 mb-2">
-              {user.email}
-            </Typography>
-          )}
+        <Chip
+          icon={isAnonymous ? <PersonIcon sx={{ fontSize: 16 }} /> : <VerifiedIcon sx={{ fontSize: 16 }} />}
+          label={isAnonymous ? 'Guest' : 'Verified'}
+          size="small"
+          sx={{
+            backgroundColor: isAnonymous ? 'rgba(255, 255, 255, 0.1)' : 'rgba(34, 197, 94, 0.2)',
+            color: 'white',
+            border: `1px solid ${isAnonymous ? 'rgba(255, 255, 255, 0.2)' : 'rgba(34, 197, 94, 0.3)'}`,
+            '& .MuiChip-icon': { color: 'white' },
+            fontSize: { xs: '0.7rem', sm: '0.8rem' },
+          }}
+        />
+      </Box>
 
-          <Chip
-            icon={isAnonymous ? <PersonIcon /> : <VerifiedIcon />}
-            label={isAnonymous ? 'Guest' : 'Verified'}
-            size="small"
-            color={isAnonymous ? 'default' : 'success'}
-            className="mt-2"
-          />
+      <Box
+        sx={{
+          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+          borderRadius: Number(theme.shape.borderRadius) * 1.5,
+          p: 3,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography 
+            variant="body2" 
+            sx={{
+              color: 'rgba(255, 255, 255, 0.7)',
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+            }}
+          >
+            Games Played
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{
+              color: 'white',
+              fontWeight: 600,
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+            }}
+          >
+            0
+          </Typography>
         </Box>
-
-        <Box className="bg-gray-50 rounded-xl p-3 space-y-2">
-          <div className="flex justify-between">
-            <Typography variant="body2" className="text-gray-600">
-              Games Played
-            </Typography>
-            <Typography variant="body2" className="font-semibold text-gray-800">
-              0
-            </Typography>
-          </div>
-          <div className="flex justify-between">
-            <Typography variant="body2" className="text-gray-600">
-              Best Score
-            </Typography>
-            <Typography variant="body2" className="font-semibold text-gray-800">
-              --
-            </Typography>
-          </div>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography 
+            variant="body2" 
+            sx={{
+              color: 'rgba(255, 255, 255, 0.7)',
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+            }}
+          >
+            Best Score
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{
+              color: 'white',
+              fontWeight: 600,
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+            }}
+          >
+            --
+          </Typography>
         </Box>
-      </CardContent>
-    </Card>
+      </Box>
+    </GlassCard>
   );
 }
