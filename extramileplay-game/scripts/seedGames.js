@@ -3,11 +3,9 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
-const svcPath = process.argv[2] || process.env.GOOGLE_APPLICATION_CREDENTIALS;
-if (!svcPath) {
-  console.error('Usage: node scripts/seedGames.js /path/to/serviceAccount.json');
-  process.exit(1);
-}
+// Default order: CLI arg -> GOOGLE_APPLICATION_CREDENTIALS env -> ./service_account.json
+const svcPath = process.argv[2] || process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(process.cwd(), 'service_account.json');
+
 
 if (!fs.existsSync(svcPath)) {
   console.error('Service account file not found at', svcPath);

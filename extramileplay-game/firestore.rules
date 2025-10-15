@@ -28,6 +28,11 @@ service cloud.firestore {
              (exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid)) ||
               request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.playerIds);
     }
+
+    // Simple admin check - expects a custom claim `admin: true` on the user token
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
     
     function isValidIncrement(field) {
       return request.resource.data[field] > resource.data[field];
@@ -49,18 +54,18 @@ service cloud.firestore {
       allow delete: if false;
     }
     
-    // ==================== Challenges Collection (Read-only) ====================
-    
+    // ==================== Challenges Collection ====================
+    // Readable by authenticated users. Writable only by admins (for seeding/management).
     match /challenges/{challengeId} {
       allow read: if isAuthenticated();
-      allow write: if false;
+      allow create, update, delete: if isAdmin();
     }
     
-    // ==================== Game Templates Collection (Read-only) ====================
-    
+    // ==================== Game Templates Collection ====================
+    // Readable by authenticated users. Writable only by admins (for seeding/management).
     match /gameTemplates/{templateId} {
       allow read: if isAuthenticated();
-      allow write: if false;
+      allow create, update, delete: if isAdmin();
     }
     
     // ==================== Settings Collection (Read-only) ====================
@@ -127,12 +132,13 @@ service cloud.firestore {
       }
       
       // ==================== Room Challenges Subcollection ====================
-      
+      // Room challenges can be read by room members. Creation of room-challenges
+      // is restricted to the room host or an admin (seeding/assignment).
       match /challenges/{challengeId} {
         allow read: if isAuthenticated() && isRoomMember(roomId);
-        allow create: if false;
+        allow create: if isAuthenticated() && (isRoomHost(roomId) || isAdmin());
         allow update: if isAuthenticated() && isRoomHost(roomId);
-        allow delete: if false;
+        allow delete: if isAuthenticated() && isRoomHost(roomId);
       }
       
       // ==================== Room Submissions Subcollection ====================

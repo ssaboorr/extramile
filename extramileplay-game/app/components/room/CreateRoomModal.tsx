@@ -1,17 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Typography,
   IconButton,
   Box,
-  CircularProgress,
   Alert,
   Slide,
   useTheme,
@@ -21,6 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import React from 'react';
 import { createRoom } from '@/lib/firebase/firestore';
+import { auth } from '@/lib/firebase/config';
 import GlassButton from '@/components/shared/GlassButton';
 
 const Transition = React.forwardRef(function Transition(
@@ -42,39 +41,56 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
   const [error, setError] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Fix hydration by ensuring client-only rendering for animations
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleCreateRoom = async () => {
     setLoading(true);
     setError(null);
 
     try {
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('You must be logged in to create a room');
+      }
+
       const code = await createRoom();
       setRoomCode(code);
     } catch (err: any) {
+      console.error('Create room error:', err);
       setError(err.message || 'Failed to create room');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (roomCode) {
-      navigator.clipboard.writeText(roomCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        await navigator.clipboard.writeText(roomCode);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
     }
   };
 
   const handleEnterRoom = () => {
     if (roomCode) {
       router.push(`/game/${roomCode}`);
-      onClose();
+      handleClose();
     }
   };
 
   const handleClose = () => {
     setRoomCode(null);
     setError(null);
+    setCopied(false);
     onClose();
   };
 
@@ -87,11 +103,11 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
       fullWidth
       PaperProps={{
         sx: {
-          // borderRadius: Number(theme.shape.borderRadius) * 2,
           m: 2,
           background: 'rgba(255, 255, 255, 0.1)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: 3,
         },
       }}
     >
@@ -100,10 +116,10 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
           background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
           color: 'white',
           position: 'relative',
-          // borderRadius: `${Number(theme.shape.borderRadius) * 2}px ${Number(theme.shape.borderRadius) * 2}px 0 0`,
+          borderRadius: '12px 12px 0 0',
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 700, pr: 8 }}>
+        <Typography component="span" variant="h6" sx={{ fontWeight: 700, pr: 8 }}>
           🎯 Create New Game Room
         </Typography>
         <IconButton
@@ -135,7 +151,7 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
                 lineHeight: 1.6,
               }}
             >
-              Create a new game room and become the host. You'll receive a unique 6-character
+              Create a new game room and become the host. You&apos;ll receive a unique 6-character
               room code that others can use to join your game.
             </Typography>
 
@@ -159,7 +175,7 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
             <Box
               sx={{
                 backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                // borderRadius: Number(theme.shape.borderRadius) * 1.5,
+                borderRadius: 2,
                 p: 3,
                 mb: 3,
                 border: '1px solid rgba(99, 102, 241, 0.2)',
@@ -176,16 +192,25 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
                 As Host, you can:
               </Typography>
               <Box component="ul" sx={{ color: 'rgba(255, 255, 255, 0.8)', pl: 3, m: 0 }}>
-                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>Start and stop the game</Typography>
-                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>View all participants</Typography>
-                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>Monitor live leaderboard</Typography>
-                <Typography component="li" variant="body2">Export results as CSV</Typography>
+                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                  Start and stop the game
+                </Typography>
+                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                  View all participants
+                </Typography>
+                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                  Monitor live leaderboard
+                </Typography>
+                <Typography component="li" variant="body2">
+                  Export results as CSV
+                </Typography>
               </Box>
             </Box>
           </Box>
         ) : (
           <Box sx={{ textAlign: 'center' }}>
             <Box sx={{ mb: 3 }}>
+              {/* Only render animation after mount to avoid hydration mismatch */}
               <Box
                 sx={{
                   display: 'inline-flex',
@@ -196,7 +221,17 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
                   background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
                   borderRadius: '50%',
                   mb: 3,
-                  animation: 'bounce 1s infinite',
+                  ...(mounted && {
+                    animation: 'bounceAnimation 1s ease-in-out infinite',
+                    '@keyframes bounceAnimation': {
+                      '0%, 100%': {
+                        transform: 'translateY(0)',
+                      },
+                      '50%': {
+                        transform: 'translateY(-10px)',
+                      },
+                    },
+                  }),
                 }}
               >
                 <Typography variant="h4">🎉</Typography>
@@ -224,7 +259,7 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
             <Box
               sx={{
                 background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: Number(theme.shape.borderRadius) * 1.5,
+                borderRadius: 2,
                 p: 4,
                 mb: 3,
                 border: '2px solid rgba(255, 255, 255, 0.1)',
@@ -249,6 +284,7 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
                   mb: 3,
                   fontSize: { xs: '2rem', sm: '2.5rem' },
                 }}
+                suppressHydrationWarning
               >
                 {roomCode}
               </Typography>
@@ -260,6 +296,7 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
                 sx={{
                   border: copied ? '2px solid rgba(34, 197, 94, 0.5)' : undefined,
                   color: copied ? theme.palette.success.light : undefined,
+                  transition: 'all 0.3s ease',
                 }}
               >
                 {copied ? 'Copied!' : 'Copy Code'}
@@ -276,7 +313,7 @@ export default function CreateRoomModal({ open, onClose }: CreateRoomModalProps)
                 backdropFilter: 'blur(10px)',
               }}
             >
-              Players can join using this code from the "Join Room" page
+              Players can join using this code from the &quot;Join Room&quot; page
             </Alert>
           </Box>
         )}

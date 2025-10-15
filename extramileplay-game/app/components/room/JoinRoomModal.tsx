@@ -100,7 +100,7 @@ export default function JoinRoomModal({ open, onClose }: JoinRoomModalProps) {
           // borderRadius: `${Number(theme.shape.borderRadius) * 2}px ${Number(theme.shape.borderRadius) * 2}px 0 0`,
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 700, pr: 8 }}>
+        <Typography component="span" variant="h6" sx={{ fontWeight: 700, pr: 8 }}>
           🚀 Join Game Room
         </Typography>
         <IconButton
