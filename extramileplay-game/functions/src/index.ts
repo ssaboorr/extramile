@@ -83,6 +83,108 @@ export const onMessageCreated = onDocumentCreated("messages/{messageId}", (event
 });
 
 /**
+ * Validate player submissions and compute authoritative score
+ * Triggered when a new submission is added to:
+ * rooms/{roomId}/players/{playerId}/submissions/{submissionId}
+ */
+export const validateSubmission = onDocumentCreated(
+  "rooms/{roomId}/players/{playerId}/submissions/{submissionId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return null;
+
+    const data = snapshot.data();
+  const { puzzleId, answer, timeSpent } = data as any;
+    const roomId = event.params.roomId;
+    const playerId = event.params.playerId;
+
+    const db = admin.firestore();
+
+    try {
+      // Load canonical challenge data
+      const challengeRef = db.collection('challenges').doc(puzzleId);
+      const challengeSnap = await challengeRef.get();
+      if (!challengeSnap.exists) {
+        console.warn('Challenge not found:', puzzleId);
+        // mark submission invalid/unknown
+        await snapshot.ref.update({ verified: false, reason: 'challenge_not_found' });
+        return null;
+      }
+
+      const challenge = challengeSnap.data();
+
+      // Basic verification depending on type
+      let isCorrect = false;
+      const type = (challenge?.type || 'mcq').toString();
+
+      if (type === 'mcq' || type === 'typing' || type === 'emoji') {
+        const correctAnswer = (challenge?.correctAnswer || '').toString().trim().toLowerCase();
+        if (typeof answer === 'string' && answer.trim().toLowerCase() === correctAnswer) {
+          isCorrect = true;
+        }
+      } else if (type === 'reaction') {
+        // For reaction tests shorter timeSpent -> higher score; accept non-empty answer as valid
+        isCorrect = typeof timeSpent === 'number' && timeSpent >= 0;
+      } else {
+        // default check
+        isCorrect = (answer || '') !== '';
+      }
+
+      // Compute points: use maxScore and apply time-based multiplier
+      const maxScore = Number(challenge?.maxScore || 0);
+      let pointsAwarded = 0;
+      if (isCorrect) {
+        // Faster completion -> more points (linear scale)
+        const timeLimit = Number(challenge?.timeLimit || 60);
+        const speedFactor = Math.max(0.2, (timeLimit - Math.min(timeSpent, timeLimit)) / timeLimit);
+        pointsAwarded = Math.round(maxScore * (0.6 + 0.4 * speedFactor));
+      }
+
+      // Update the submission doc with verification and points
+      await snapshot.ref.update({ verified: true, isCorrect, pointsAwarded, verifiedAt: admin.firestore.FieldValue.serverTimestamp() });
+
+      // Update room player's totalScore and completedChallenges atomically
+      const roomPlayerRef = db.collection('rooms').doc(roomId).collection('players').doc(playerId);
+      await db.runTransaction(async (tx) => {
+        const rpSnap = await tx.get(roomPlayerRef);
+        if (!rpSnap.exists) {
+          // create minimal player entry
+          tx.set(roomPlayerRef, {
+            playerId,
+            totalScore: pointsAwarded || 0,
+            completedChallenges: [puzzleId],
+          }, { merge: true });
+        } else {
+          tx.update(roomPlayerRef, {
+            totalScore: admin.firestore.FieldValue.increment(pointsAwarded),
+            completedChallenges: admin.firestore.FieldValue.arrayUnion(puzzleId),
+          });
+        }
+      });
+
+      // Update global player stats (players/{playerId}.totalScore)
+      const playerRef = db.collection('players').doc(playerId);
+      await playerRef.update({ totalScore: admin.firestore.FieldValue.increment(pointsAwarded) });
+
+      // Optionally, update a room leaderboard doc
+      const leaderboardRef = db.collection('rooms').doc(roomId).collection('leaderboard').doc(playerId);
+      await leaderboardRef.set({ playerId, points: admin.firestore.FieldValue.increment(pointsAwarded), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+
+      console.log(`Submission validated for ${playerId} in room ${roomId}: points ${pointsAwarded}`);
+    } catch (err: any) {
+      console.error('Error validating submission:', err);
+      try {
+        await snapshot.ref.update({ verified: false, reason: err.message });
+      } catch (e) {
+        console.error('Failed to mark submission as invalid:', e);
+      }
+    }
+
+    return null;
+  }
+);
+
+/**
  * Example Scheduled Function (runs every day at midnight)
  * Requires Firebase Blaze plan
  */

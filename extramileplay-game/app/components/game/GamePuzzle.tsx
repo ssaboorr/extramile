@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -9,7 +9,6 @@ import {
   Card,
   CardContent,
   useTheme,
-  Fade,
   Chip,
 } from '@mui/material';
 import { CheckCircle, Cancel } from '@mui/icons-material';
@@ -32,34 +31,51 @@ interface GamePuzzleProps {
   onAnswer: (answer: string, timeSpent: number) => void;
   onSkip: () => void;
   disabled?: boolean;
+  // optional override to use a custom countdown (in seconds). If provided, it will
+  // be used instead of puzzle.timeLimit and displayed to the user.
+  countdownOverrideSeconds?: number;
 }
 
-export default function GamePuzzle({ puzzle, onAnswer, onSkip, disabled = false }: GamePuzzleProps) {
+export default function GamePuzzle({ puzzle, onAnswer, onSkip, disabled = false, countdownOverrideSeconds }: GamePuzzleProps) {
   const theme = useTheme();
   const [answer, setAnswer] = useState('');
   const [selectedOption, setSelectedOption] = useState('');
-  const [showResult, setShowResult] = useState(false);
-  const [isCorrect, setIsCorrect] = useState(false);
+  // results are not revealed to players; submissions are sent immediately
   const [startTime] = useState(Date.now());
+  const [countdown, setCountdown] = useState<number>(countdownOverrideSeconds ?? puzzle.timeLimit);
 
   const handleSubmit = () => {
     const finalAnswer = puzzle.type === 'mcq' ? selectedOption : answer;
     const timeSpent = Math.floor((Date.now() - startTime) / 1000);
     
-    const correct = finalAnswer.toLowerCase().trim() === puzzle.correctAnswer.toLowerCase().trim();
-    setIsCorrect(correct);
-    setShowResult(true);
-    
-    // Call the answer handler after a brief delay to show the result
-    setTimeout(() => {
-      onAnswer(finalAnswer, timeSpent);
-    }, 2000);
+    // Submit immediately and proceed (do not reveal correct answer)
+    onAnswer(finalAnswer, timeSpent);
   };
 
   const handleSkip = () => {
     const timeSpent = Math.floor((Date.now() - startTime) / 1000);
     onSkip();
   };
+
+  // Countdown effect: use override if provided otherwise use puzzle.timeLimit
+  useEffect(() => {
+    const seconds = countdownOverrideSeconds ?? puzzle.timeLimit;
+    setCountdown(seconds);
+    const interval = setInterval(() => {
+      setCountdown((s) => {
+        if (s <= 1) {
+          clearInterval(interval);
+          // Auto-submit/skip when timer ends
+          handleSkip();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [puzzle.id]);
 
   const getPuzzleIcon = () => {
     switch (puzzle.type) {
@@ -80,7 +96,7 @@ export default function GamePuzzle({ puzzle, onAnswer, onSkip, disabled = false 
   };
 
   return (
-    <Fade in timeout={500}>
+    <Box sx={{ transition: 'opacity 0.5s', opacity: 1 }}>
       <GlassCard hover={false}>
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           {/* Puzzle Header */}
@@ -137,147 +153,106 @@ export default function GamePuzzle({ puzzle, onAnswer, onSkip, disabled = false 
           </Typography>
 
           {/* Answer Section */}
-          {!showResult ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {puzzle.type === 'mcq' && puzzle.options ? (
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
-                    gap: 2,
-                  }}
-                >
-                  {puzzle.options.map((option, index) => (
-                    <Button
-                      key={index}
-                      variant={selectedOption === option ? 'contained' : 'outlined'}
-                      onClick={() => setSelectedOption(option)}
-                      disabled={disabled}
-                      sx={{
-                        p: 2,
-                        textAlign: 'left',
-                        justifyContent: 'flex-start',
-                        backgroundColor: selectedOption === option ? theme.palette.primary.main : 'rgba(255, 255, 255, 0.05)',
-                        border: `1px solid ${selectedOption === option ? theme.palette.primary.main : 'rgba(255, 255, 255, 0.2)'}`,
-                        color: 'white',
-                        '&:hover': {
-                          backgroundColor: selectedOption === option ? theme.palette.primary.dark : 'rgba(255, 255, 255, 0.1)',
-                        },
-                      }}
-                    >
-                      <Typography sx={{ fontWeight: 600 }}>
-                        {String.fromCharCode(65 + index)}. {option}
-                      </Typography>
-                    </Button>
-                  ))}
-                </Box>
-              ) : (
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  placeholder={puzzle.type === 'number' ? 'Enter a number' : 'Type your answer'}
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  disabled={disabled}
-                  type={puzzle.type === 'number' ? 'number' : 'text'}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      color: 'white',
-                      '& fieldset': {
-                        borderColor: 'rgba(255, 255, 255, 0.3)',
-                      },
-                      '&:hover fieldset': {
-                        borderColor: 'rgba(255, 255, 255, 0.5)',
-                      },
-                      '&.Mui-focused fieldset': {
-                        borderColor: theme.palette.primary.light,
-                      },
-                    },
-                    '& .MuiInputBase-input': {
-                      color: 'white',
-                      '&::placeholder': {
-                        color: 'rgba(255, 255, 255, 0.7)',
-                      },
-                    },
-                  }}
-                />
-              )}
-
-              {/* Action Buttons */}
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                <GlassButton
-                  variant="contained"
-                  onClick={handleSubmit}
-                  disabled={
-                    disabled ||
-                    (puzzle.type === 'mcq' ? !selectedOption : !answer.trim()) ||
-                    showResult
-                  }
-                  sx={{ minWidth: 120 }}
-                >
-                  Submit Answer
-                </GlassButton>
-                
-                <GlassButton
-                  variant="outlined"
-                  onClick={handleSkip}
-                  disabled={disabled || showResult}
-                  sx={{ minWidth: 120 }}
-                >
-                  Skip
-                </GlassButton>
-              </Box>
-            </Box>
-          ) : (
-            /* Result Display */
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-                {isCorrect ? (
-                  <CheckCircle sx={{ fontSize: 64, color: '#4caf50' }} />
-                ) : (
-                  <Cancel sx={{ fontSize: 64, color: '#f44336' }} />
-                )}
-              </Box>
-              
-              <Typography
-                variant="h4"
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {puzzle.type === 'mcq' && puzzle.options ? (
+              <Box
                 sx={{
-                  color: isCorrect ? '#4caf50' : '#f44336',
-                  fontWeight: 700,
-                  mb: 2,
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                  gap: 2,
                 }}
               >
-                {isCorrect ? 'Correct!' : 'Incorrect'}
-              </Typography>
-              
-              {!isCorrect && (
-                <Typography
-                  variant="body1"
-                  sx={{
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    mb: 2,
-                  }}
-                >
-                  Correct answer: <strong>{puzzle.correctAnswer}</strong>
-                </Typography>
-              )}
-              
-              {puzzle.explanation && (
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  {puzzle.explanation}
-                </Typography>
-              )}
+                {puzzle.options.map((option, index) => (
+                  <Button
+                    key={index}
+                    variant={selectedOption === option ? 'contained' : 'outlined'}
+                    onClick={() => setSelectedOption(option)}
+                    disabled={disabled}
+                    sx={{
+                      p: 2,
+                      textAlign: 'left',
+                      justifyContent: 'flex-start',
+                      backgroundColor: selectedOption === option ? theme.palette.primary.main : 'rgba(255, 255, 255, 0.05)',
+                      border: `1px solid ${selectedOption === option ? theme.palette.primary.main : 'rgba(255, 255, 255, 0.2)'}`,
+                      color: 'white',
+                      '&:hover': {
+                        backgroundColor: selectedOption === option ? theme.palette.primary.dark : 'rgba(255, 255, 255, 0.1)',
+                      },
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 600 }}>
+                      {String.fromCharCode(65 + index)}. {option}
+                    </Typography>
+                  </Button>
+                ))}
+              </Box>
+            ) : (
+              <TextField
+                fullWidth
+                variant="outlined"
+                placeholder={puzzle.type === 'number' ? 'Enter a number' : 'Type your answer'}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                disabled={disabled}
+                type={puzzle.type === 'number' ? 'number' : 'text'}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    color: 'white',
+                    '& fieldset': {
+                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: theme.palette.primary.light,
+                    },
+                  },
+                  '& .MuiInputBase-input': {
+                    color: 'white',
+                    '&::placeholder': {
+                      color: 'rgba(255, 255, 255, 0.7)',
+                    },
+                  },
+                }}
+              />
+            )}
+
+            {/* Countdown display */}
+            <Box sx={{ textAlign: 'center', mb: 2 }}>
+              <Chip
+                label={`Time Left: ${Math.floor(countdown / 60)
+                  .toString()
+                  .padStart(2, '0')}:${(countdown % 60).toString().padStart(2, '0')}`}
+                size="small"
+                sx={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'white', fontWeight: 700 }}
+              />
             </Box>
-          )}
+
+            {/* Action Buttons */}
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+              <GlassButton
+                variant="contained"
+                onClick={handleSubmit}
+                disabled={disabled || (puzzle.type === 'mcq' ? !selectedOption : !answer.trim())}
+                sx={{ minWidth: 120 }}
+              >
+                Submit Answer
+              </GlassButton>
+              
+              <GlassButton
+                variant="outlined"
+                onClick={handleSkip}
+                disabled={disabled}
+                sx={{ minWidth: 120 }}
+              >
+                Skip
+              </GlassButton>
+            </Box>
+          </Box>
         </CardContent>
       </GlassCard>
-    </Fade>
+    </Box>
   );
 }

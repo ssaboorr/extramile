@@ -6,7 +6,6 @@ import {
   Container,
   Typography,
   Box,
-  Fade,
   useTheme,
   useMediaQuery,
   IconButton,
@@ -36,6 +35,7 @@ import GameSession from '@/components/game/GameSession';
 import { doc, getDoc, onSnapshot, updateDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { leaveRoom } from '@/lib/firebase/collections';
+import RoomLeaderboard from '@/components/game/RoomLeaderboard';
 
 interface RoomPlayer {
   playerId: string;
@@ -122,6 +122,14 @@ export default function GameRoomPage() {
           const remaining = Math.max(0, timeLimit - elapsed);
           setTimeRemaining(remaining);
         }
+        // If the room is active navigate to the playing screen
+        if (data.status === 'active') {
+          // If we're not already on the play route, navigate there
+          const currentPath = window.location.pathname;
+          if (!currentPath.endsWith('/play')) {
+            router.push(`/game/${roomId}/play`);
+          }
+        }
       } else {
         router.push('/');
       }
@@ -181,9 +189,56 @@ export default function GameRoomPage() {
 
     try {
       const roomRef = doc(db, 'rooms', roomId);
+      // Fetch 3 game session templates and attach them to the room as sessions
+      const templatesRef = collection(db, 'gameTemplates');
+      const { getDocs } = await import('firebase/firestore');
+      const templatesSnap = await getDocs(templatesRef);
+      const templates: any[] = [];
+      templatesSnap.forEach((t: any) => {
+        const data = t.data();
+        templates.push({ id: t.id, ...data });
+      });
+
+      // Prefer explicit easy/medium/hard templates when available
+      const easy = templates.find(
+        (t) =>
+          t &&
+          Array.isArray(t.challenges) &&
+          t.challenges.length >= 4 &&
+          (t.difficulty === 'easy' || (t.id || '').toLowerCase().includes('easy'))
+      );
+      const medium = templates.find(
+        (t) =>
+          t &&
+          Array.isArray(t.challenges) &&
+          t.challenges.length >= 4 &&
+          (t.difficulty === 'medium' || (t.id || '').toLowerCase().includes('medium'))
+      );
+      const hard = templates.find(
+        (t) =>
+          t &&
+          Array.isArray(t.challenges) &&
+          t.challenges.length >= 4 &&
+          (t.difficulty === 'hard' || (t.id || '').toLowerCase().includes('hard'))
+      );
+
+      const chosenTemplates = [easy, medium, hard].filter(Boolean) as any[];
+      const chosen = chosenTemplates.map((t) => ({
+        templateId: t.id,
+        name: t.name || `Session - ${t.difficulty ?? 'mixed'}`,
+        difficulty: t.difficulty || 'medium',
+        totalTime: t.totalTime ?? null,
+        maxScore: t.maxScore ?? null,
+        challenges: (t.challenges || []).slice(0, 4),
+      }));
+
       await updateDoc(roomRef, {
         status: 'active',
         startedAt: new Date(),
+        sessions: chosen,
+        currentSessionId: chosen[0]?.templateId ?? null,
+        currentSessionIndex: 0,
+        currentChallengeIndex: 0,
       });
     } catch (error) {
       console.error('Error starting game:', error);
@@ -275,8 +330,7 @@ export default function GameRoomPage() {
       />
 
       <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 4, md: 6 } }}>
-        <Fade in timeout={800}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, sm: 4 } }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, sm: 4 }, transition: 'opacity 0.8s', opacity: 1 }}>
             
             {/* Room Status & Timer */}
             <GlassCard hover={false}>
@@ -441,6 +495,9 @@ export default function GameRoomPage() {
                   </Box>
                 ))}
               </Box>
+              <Box sx={{ mt: 3 }}>
+                <RoomLeaderboard roomId={roomId} />
+              </Box>
             </GlassCard>
 
             {/* Game Controls */}
@@ -594,7 +651,6 @@ export default function GameRoomPage() {
               </GlassCard>
             )}
           </Box>
-        </Fade>
       </Container>
     </AppBackground>
   );

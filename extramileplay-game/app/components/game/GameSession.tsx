@@ -6,7 +6,6 @@ import {
   Typography,
   LinearProgress,
   useTheme,
-  Fade,
 } from '@mui/material';
 import GamePuzzle from './GamePuzzle';
 
@@ -21,10 +20,23 @@ interface Puzzle {
   timeLimit: number;
 }
 
+interface SubmissionPayload {
+  puzzleId: string;
+  answer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
+  pointsEarned: number;
+  timeSpent: number;
+}
+
 interface GameSessionProps {
   roomId: string;
   playerId: string;
   onGameComplete: (results: GameResults) => void;
+  // called for each recorded answer so parent can persist it in Firestore
+  onRecordAnswer?: (payload: SubmissionPayload) => Promise<void> | void;
+  countdownOverrideSeconds?: number;
+  puzzles?: Puzzle[];
 }
 
 interface GameResults {
@@ -36,6 +48,8 @@ interface GameResults {
     puzzleId: string;
     answer: string;
     isCorrect: boolean;
+    correctAnswer: string;
+    pointsEarned: number;
     timeSpent: number;
   }>;
 }
@@ -81,7 +95,7 @@ const SAMPLE_PUZZLES: Puzzle[] = [
   },
 ];
 
-export default function GameSession({ roomId, playerId, onGameComplete }: GameSessionProps) {
+export default function GameSession({ roomId, playerId, onGameComplete, onRecordAnswer, countdownOverrideSeconds, puzzles }: GameSessionProps) {
   const theme = useTheme();
   const [currentPuzzleIndex, setCurrentPuzzleIndex] = useState(0);
   const [answers, setAnswers] = useState<GameResults['answers']>([]);
@@ -89,21 +103,41 @@ export default function GameSession({ roomId, playerId, onGameComplete }: GameSe
   const [puzzleStartTime, setPuzzleStartTime] = useState(Date.now());
   const [isGameActive, setIsGameActive] = useState(true);
 
-  const currentPuzzle = SAMPLE_PUZZLES[currentPuzzleIndex];
-  const totalPuzzles = SAMPLE_PUZZLES.length;
+  const puzzleList = puzzles && puzzles.length ? puzzles : SAMPLE_PUZZLES;
+  const currentPuzzle = puzzleList[currentPuzzleIndex];
+  const totalPuzzles = puzzleList.length;
   const progress = ((currentPuzzleIndex + 1) / totalPuzzles) * 100;
 
-  const handleAnswer = (answer: string, timeSpent: number) => {
+  const handleAnswer = async (answer: string, timeSpent: number) => {
     const isCorrect = answer.toLowerCase().trim() === currentPuzzle.correctAnswer.toLowerCase().trim();
+    const pointsEarned = isCorrect ? currentPuzzle.points : 0;
     
     const newAnswer = {
       puzzleId: currentPuzzle.id,
       answer,
+      correctAnswer: currentPuzzle.correctAnswer,
       isCorrect,
+      pointsEarned,
       timeSpent,
     };
 
     setAnswers(prev => [...prev, newAnswer]);
+
+    // Notify parent so it can persist each player's answer (challenge id + time)
+    if (typeof onRecordAnswer === 'function') {
+      try {
+        await onRecordAnswer({
+          puzzleId: newAnswer.puzzleId,
+          answer: newAnswer.answer,
+          correctAnswer: newAnswer.correctAnswer,
+          isCorrect: newAnswer.isCorrect,
+          pointsEarned,
+          timeSpent: newAnswer.timeSpent,
+        });
+      } catch (err) {
+        console.error('Error recording answer:', err);
+      }
+    }
 
     // Move to next puzzle or end game
     setTimeout(() => {
@@ -122,11 +156,24 @@ export default function GameSession({ roomId, playerId, onGameComplete }: GameSe
     const newAnswer = {
       puzzleId: currentPuzzle.id,
       answer: '',
+      correctAnswer: currentPuzzle.correctAnswer,
       isCorrect: false,
+      pointsEarned: 0,
       timeSpent,
     };
 
     setAnswers(prev => [...prev, newAnswer]);
+
+    if (typeof onRecordAnswer === 'function') {
+      onRecordAnswer({
+        puzzleId: newAnswer.puzzleId,
+        answer: newAnswer.answer,
+        correctAnswer: newAnswer.correctAnswer,
+        isCorrect: newAnswer.isCorrect,
+        pointsEarned: 0,
+        timeSpent: newAnswer.timeSpent,
+      });
+    }
 
     // Move to next puzzle or end game
     if (currentPuzzleIndex < totalPuzzles - 1) {
@@ -142,9 +189,7 @@ export default function GameSession({ roomId, playerId, onGameComplete }: GameSe
     
     const totalTime = Math.floor((Date.now() - gameStartTime) / 1000);
     const correctAnswers = answers.filter(a => a.isCorrect).length;
-    const score = answers.reduce((total, answer) => {
-      return total + (answer.isCorrect ? currentPuzzle.points : 0);
-    }, 0);
+    const score = answers.reduce((total, answer) => total + answer.pointsEarned, 0);
     const accuracy = answers.length > 0 ? (correctAnswers / answers.length) * 100 : 0;
 
     const results: GameResults = {
@@ -195,8 +240,7 @@ export default function GameSession({ roomId, playerId, onGameComplete }: GameSe
   }
 
   return (
-    <Fade in timeout={500} key={currentPuzzleIndex}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <Box key={currentPuzzleIndex} sx={{ display: 'flex', flexDirection: 'column', gap: 3, transition: 'opacity 0.5s', opacity: 1 }}>
         {/* Game Progress */}
         <Box
           sx={{
@@ -245,8 +289,8 @@ export default function GameSession({ roomId, playerId, onGameComplete }: GameSe
           puzzle={currentPuzzle}
           onAnswer={handleAnswer}
           onSkip={handleSkip}
+          countdownOverrideSeconds={countdownOverrideSeconds}
         />
-      </Box>
-    </Fade>
+    </Box>
   );
 }

@@ -360,6 +360,32 @@ import {
       });
   
       console.log(`✅ Room created: ${roomId}`);
+
+      // After creating the room, fetch available templates (easy/medium/hard)
+      try {
+        const templatesRef = collection(db, 'gameTemplates');
+        const difficulties = ['easy', 'medium', 'hard'];
+        const sessions: any[] = [];
+
+        for (const diff of difficulties) {
+          const q = query(templatesRef, where('difficulty', '==', diff), limit(1));
+          const snaps = await getDocs(q);
+          if (!snaps.empty) {
+            const docSnap = snaps.docs[0];
+            const d = docSnap.data() as any;
+            sessions.push({ templateId: docSnap.id, difficulty: diff, challenges: d.challenges || [] });
+          }
+        }
+
+        if (sessions.length > 0) {
+          await updateDoc(roomRef, { templatesAvailable: sessions });
+          console.log('Attached available templates to room:', roomId, sessions.map(s=>s.templateId));
+          // Also log the full sessions payload for debugging when rooms are created
+          console.log('[createRoom] sessions payload:', JSON.stringify(sessions, null, 2));
+        }
+      } catch (err) {
+        console.warn('Could not attach templates to room:', err);
+      }
       return roomId;
     } catch (error: any) {
       console.error('Error creating room:', error);
@@ -497,32 +523,48 @@ import {
     const roomRef = doc(db, 'rooms', roomId);
     
     try {
+      let playerIds: string[] = [];
       await runTransaction(db, async (transaction) => {
         const roomSnap = await transaction.get(roomRef);
         
         if (!roomSnap.exists()) {
           throw new Error('Room not found');
         }
-  
+
         const roomData = roomSnap.data() as RoomData;
         
         // Verify host
         if (roomData.hostId !== hostId) {
           throw new Error('Only the host can start the game');
         }
-  
+
         // Check if room has players
         if (roomData.currentPlayers < 1) {
           throw new Error('Cannot start game with no players');
         }
-  
+
+        playerIds = roomData.playerIds || [];
+
         transaction.update(roomRef, {
           status: 'active',
           startedAt: serverTimestamp(),
         });
       });
-      
-      console.log(`✅ Room ${roomId} started`);
+
+      // After transaction, add roomId to each player's profile (activeRooms)
+      for (const pid of playerIds) {
+        try {
+          const playerRef = doc(db, 'players', pid);
+          await updateDoc(playerRef, {
+            // store active rooms for player
+            activeRooms: arrayUnion(roomId)
+          });
+        } catch (err) {
+          console.warn(`Could not add room to player ${pid}:`, err);
+        }
+      }
+
+      console.log(`✅ Room ${roomId} started and players updated`);
     } catch (error: any) {
       console.error('Error starting room:', error);
       throw new Error(`Failed to start room: ${error.message}`);

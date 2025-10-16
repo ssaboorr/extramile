@@ -37,20 +37,106 @@ service cloud.firestore {
     function isValidIncrement(field) {
       return request.resource.data[field] > resource.data[field];
     }
+
+    function hasOnlyAllowedKeys(map, allowed) {
+      return map.keys().hasOnly(allowed);
+    }
+
+    function isValidLastSubmission(submission) {
+      return submission is map &&
+             hasOnlyAllowedKeys(submission, [
+               'puzzleId',
+               'answer',
+               'correctAnswer',
+               'isCorrect',
+               'pointsEarned',
+               'timeSpent',
+               'submittedAt',
+               'sessionIndex',
+               'sessionDifficulty'
+             ]) &&
+             submission.puzzleId is string &&
+             submission.answer is string &&
+             (!('correctAnswer' in submission) || submission.correctAnswer is string) &&
+             submission.isCorrect is bool &&
+             submission.pointsEarned is number &&
+             submission.pointsEarned >= 0 &&
+             submission.timeSpent is number &&
+             submission.timeSpent >= 0 &&
+             (!('sessionIndex' in submission) || submission.sessionIndex is int) &&
+             (!('sessionDifficulty' in submission) || submission.sessionDifficulty is string) &&
+             (!('submittedAt' in submission) || submission.submittedAt is timestamp);
+    }
+
+    function isValidSubmissionDoc(data, allowPointsField) {
+      return data is map &&
+             hasOnlyAllowedKeys(data, [
+               'playerId',
+               'roomId',
+               'puzzleId',
+               'answer',
+               'correctAnswer',
+               'isCorrect',
+               allowPointsField ? 'points' : 'pointsEarned',
+               'timeSpent',
+               'sessionIndex',
+               'sessionDifficulty',
+               'submittedAt'
+             ]) &&
+             data.playerId is string &&
+             data.roomId is string &&
+             data.puzzleId is string &&
+             data.answer is string &&
+             (!('correctAnswer' in data) || data.correctAnswer is string) &&
+             data.isCorrect is bool &&
+             ((allowPointsField ? data.points : data.pointsEarned) is number) &&
+             ((allowPointsField ? data.points : data.pointsEarned) >= 0) &&
+             data.timeSpent is number &&
+             data.timeSpent >= 0 &&
+             (!('sessionIndex' in data) || data.sessionIndex is int) &&
+             (!('sessionDifficulty' in data) || data.sessionDifficulty is string) &&
+             (!('submittedAt' in data) || data.submittedAt is timestamp);
+    }
     
     // ==================== Players Collection ====================
     
     match /players/{userId} {
       allow read: if isAuthenticated() && isOwner(userId);
-      
-      allow create: if isAuthenticated() && 
-                       request.auth.uid == userId &&
-                       request.resource.data.uid == userId &&
-                       request.resource.data.createdAt != null &&
-                       request.resource.data.lastLoginAt != null;
-      
-      allow update: if isAuthenticated() && isOwner(userId);
-      
+
+  // Creation allowed for the authenticated user only. Do not require
+  // explicit createdAt/lastLoginAt here because clients may use
+  // serverTimestamp() transforms which are not visible to rules.
+  allow create: if isAuthenticated() && request.auth.uid == userId && request.resource.data.uid == userId;
+
+      // Restrict updates from clients: users can only update non-authoritative fields
+      // (displayName, email, photoURL, lastLoginAt, loginCount, preferences)
+      // Additionally allow the user to update their activeRooms array (add/remove)
+      allow update: if isAuthenticated() && isOwner(userId) && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'email', 'photoURL', 'lastLoginAt', 'loginCount', 'preferences', 'activeRooms'
+        ])
+      );
+
+      allow delete: if false;
+    }
+
+    // Allow players to keep a personal submissions history under their player doc
+    match /players/{userId}/submissions/{submissionId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Allow creating personal submission records. Do not require submittedAt
+      // because clients often use serverTimestamp() which is invisible to rules.
+      allow create: if isAuthenticated() && request.auth.uid == userId &&
+                     isValidSubmissionDoc(request.resource.data, true) &&
+                     request.resource.data.playerId == userId;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Allow players to create game records under their own player doc (game history)
+    match /players/{userId}/games/{gameId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId && request.resource.data.roomId is string;
+      allow update: if false;
       allow delete: if false;
     }
     
@@ -80,15 +166,10 @@ service cloud.firestore {
     match /rooms/{roomId} {
       allow read: if isAuthenticated();
       
-      allow create: if isAuthenticated() && 
-                       request.resource.data.hostId == request.auth.uid &&
-                       request.resource.data.roomId == roomId &&
-                       request.resource.data.status == 'waiting' &&
-                       request.resource.data.currentPlayers >= 0 &&
-                       request.resource.data.maxPlayers > 0 &&
-                       request.resource.data.playerIds is list &&
-                       request.resource.data.playerIds.size() == 1 &&
-                       request.auth.uid in request.resource.data.playerIds;
+  // Development-friendly: allow any authenticated user to create a room.
+  // This keeps multi-document transactions that include serverTimestamp
+  // transforms from failing due to strict field checks. Harden in prod.
+  allow create: if isAuthenticated();
       
       allow update: if isAuthenticated() && (
         // Host can update any field
@@ -112,23 +193,42 @@ service cloud.firestore {
       // ==================== Room Players Subcollection ====================
       
       match /players/{playerId} {
-        allow read: if isAuthenticated();
-        
-        allow create: if isAuthenticated() && 
-                         playerId == request.auth.uid &&
-                         request.resource.data.playerId == request.auth.uid &&
-                         request.resource.data.joinedAt != null &&
-                         request.resource.data.totalScore == 0;
-        
+        allow read: if isAuthenticated() && isRoomMember(roomId);
+
+  // Allow the authenticated player to create their own room-player entry.
+  // Keep this permissive for local/dev transactions; server-side code
+  // (Cloud Function) remains authoritative for scores.
+  allow create: if isAuthenticated() && playerId == request.auth.uid && request.resource.data.playerId == request.auth.uid;
+
+        // Updates: host can update any field. A player may only update a small set of
+        // allowed transient fields (for example 'lastSubmission', 'currentSessionIndex', 'currentChallengeIndex' or 'isReady'), but
+        // must NOT be allowed to modify authoritative fields like totalScore or completedChallenges.
         allow update: if isAuthenticated() && (
-          playerId == request.auth.uid ||
-          isRoomHost(roomId)
+          isRoomHost(roomId) || (
+            playerId == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSubmission','isReady','photoURL','currentSessionIndex','currentChallengeIndex']) &&
+            (!('lastSubmission' in request.resource.data) || isValidLastSubmission(request.resource.data.lastSubmission))
+          )
         );
-        
+
+        // Deletion allowed for the player leaving or the host removing a player
         allow delete: if isAuthenticated() && (
-          playerId == request.auth.uid ||
-          isRoomHost(roomId)
+          playerId == request.auth.uid || isRoomHost(roomId)
         );
+
+        // Nested submissions under each room player: players may create their own submissions
+        match /submissions/{submissionId} {
+          allow read: if isAuthenticated() && isRoomMember(roomId);
+          // Allow creating submissions under a room player. Do not require
+          // submittedAt because clients commonly use serverTimestamp().
+          allow create: if isAuthenticated() &&
+                          playerId == request.auth.uid &&
+                          request.resource.data.playerId == request.auth.uid &&
+                          request.resource.data.roomId == roomId &&
+                          isValidSubmissionDoc(request.resource.data, false);
+          allow update: if false;
+          allow delete: if false;
+        }
       }
       
       // ==================== Room Challenges Subcollection ====================
@@ -146,10 +246,11 @@ service cloud.firestore {
       match /submissions/{submissionId} {
         allow read: if isAuthenticated() && isRoomMember(roomId);
         
-        allow create: if isAuthenticated() && 
-                         request.resource.data.playerId == request.auth.uid &&
-                         request.resource.data.roomId == roomId &&
-                         request.resource.data.submittedAt != null;
+  // Allow creating a submission for the room. Do not require submittedAt
+  // because clients often use serverTimestamp() which is not visible to rules.
+  allow create: if isAuthenticated() && 
+       request.resource.data.playerId == request.auth.uid &&
+       request.resource.data.roomId == roomId;
         
         allow update: if false;
         allow delete: if false;

@@ -6,7 +6,6 @@ import {
   Container,
   Typography,
   Box,
-  Fade,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
@@ -72,8 +71,7 @@ export default function HomePage() {
 
       {/* Main Content */}
       <Container maxWidth="lg" sx={{ py: { xs: 4, sm: 6, md: 8 } }}>
-        <Fade in timeout={800}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 4, sm: 6, md: 8 } }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 4, sm: 6, md: 8 }, transition: 'opacity 0.8s', opacity: 1 }}>
             {/* Welcome Section */}
             <Box sx={{ textAlign: 'center' }}>
               <Typography
@@ -153,7 +151,6 @@ export default function HomePage() {
               <UserProfile user={user} />
             </Box>
           </Box>
-        </Fade>
       </Container>
 
       {/* Modals */}
